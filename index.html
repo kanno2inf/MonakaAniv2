@@ -1,0 +1,253 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <!-- fragment shader -->
+    <script id="fs" type="x-shader/x-fragment">precision highp float;
+uniform float time;
+uniform vec2 resolution;
+
+const float PI = 3.141592653589793238446;
+const float PI2 = 2. * PI;
+
+float rand(vec2 uv) {
+    return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+float sin1(float a) {
+    return sin(a) * 0.5 + 0.5;
+}
+
+mat2 rot(float a) {
+    float c = cos(a), s=sin(a);
+    return mat2(c, s, -s, c);
+}
+
+vec2 rot2d(vec2 p, float a) {
+     return p * rot(a);
+}
+
+vec3 rotX(vec3 p, float a) {
+     return vec3(p.x, p.yz * rot(a));
+}
+
+vec3 rotY(vec3 p, float a) {
+     return vec3(p.y, p.zx * rot(a)).yxz;
+}
+
+vec3 rotZ(vec3 p, float a) {
+     return vec3(p.xy * rot(a), p.z);
+}
+
+vec3 rotate(vec3 p, float angle, vec3 axis) {
+    vec3 a = normalize(axis);
+    float s = sin(angle), c = cos(angle);
+    float r = 1.0 - c;
+    mat3 m = mat3(
+        a.x * a.x * r + c,          a.y * a.x * r + a.z * s,    a.z * a.x * r - a.y * s,
+        a.x * a.y * r - a.z * s,    a.y * a.y * r + c,          a.z * a.y * r + a.x * s,
+        a.x * a.z * r + a.y * s,    a.y * a.z * r - a.x * s,    a.z * a.z * r + c
+    );
+    return m * p;
+}
+
+vec3 translate(vec3 p, vec3 t) {
+    return p - t;
+}
+
+float sphere(vec3 p, float r) {
+    return length(p) - r;
+}
+
+float smoothMin(float d1, float d2, float k) {
+    k /= 10.;
+    float h = clamp(0.5 + 0.5 * (d2 - d1)/k, 0., 1.);
+    return mix(d2, d1, h) - k * h * (1. - h);
+}
+
+float sdf(vec3 p) {
+    p = rotY(p, PI * time * 0.05);
+    p = rotX(p, PI * time * 0.1);
+    p = rotY(p, time);
+    float dSphere = 10000.;
+    float drad = .2 * PI;
+    float size = 0.35;
+    for(float i=0.; i<10.; i+=1.) {
+        vec3 p2 = rotY(p, i * drad);
+        p2 = translate(p2, vec3(1., 0., 0.));
+        dSphere = smoothMin(dSphere, sphere(p2, size), 1.2);
+    }
+    return dSphere;
+}
+
+vec3 normal(vec3 p, float eps) {
+    vec2 e = vec2(1., -1.) * 0.5773 * eps;
+    return normalize(
+        e.xyy * sdf(p + e.xyy) +
+        e.yyx * sdf(p + e.yyx) +
+        e.yxy * sdf(p + e.yxy) +
+        e.xxx * sdf(p + e.xxx)
+    );
+}
+
+vec3 hsv(float h, float s, float v) {
+    return (
+        (
+            clamp(abs(fract(h + vec3(0,2,1)/3.)*6.-3.) - 1., 0., 1.) -1.
+        ) * s + 1.
+    ) * v;
+}
+
+vec3 hs(float h , float s) {
+    return hsv(h, s, 1.);
+}
+
+vec3 hue(float h) {
+    return hsv(h, 1., 1.);
+}
+
+const vec3 lightDir = vec3(0.577, 0.577, 0.577);
+
+
+float star(vec2 p, float s) {
+    p *= 1.3 / s;
+    float n = 5.;
+    float round = 12.;
+
+    float a = atan(p.y, p.x);
+    float l = pow(length(p), 0.8);
+    float d = l + cos(a * n) / round - 0.5;
+    return 1. - step(0., d * 2.);
+}
+
+vec4 starry(vec2 uv, float speed, float size, float angle, float density, vec2 hc) {
+    vec2 scrol = vec2(time * speed, 0.);
+    vec2 st = (rot(angle) * uv + scrol) * size;
+    vec2 fl = floor(st), fr = fract(st) - .5;
+
+    float mask = step(1. - density, rand(fl));
+
+    float ra = rand(fl) + time * rand(fl);
+    vec2 rfr = rot2d(fr, ra);
+    float rs = max(sin1(fl.y + time * 1.2 + rand(fl)), 0.5);
+
+    float shape = star(rfr, rs) * mask * mask;
+
+    vec3 color = hs(rand(fl * 1.1) * hc.x + hc.y, .2);
+    return vec4(color * shape, shape);
+}
+
+float rect(vec2 uv, float s) {
+    float size = s * 0.5;
+    uv = abs(uv);
+    return step(uv.x, size) * step(uv.y, size);
+}
+
+vec4 trail(vec2 uv, float speed, float size, float angle, float density, vec2 hc) {
+    vec2 st = rot(angle) * uv * size;
+    vec2 fl = floor(st), fr = fract(st) - .5;
+
+    float rdens = rand(fl.yy);
+    float mask = step(1. - density, rdens) * rdens;
+
+    float rnd = rand(fl.yy * 0.5);
+    float rs = sin((uv.y * 4. + 10.) * rnd + time * 2.3 * speed);
+    vec2 rfr = rot2d(fr, rs * PI / 2.);
+
+    float shape = rect(rfr, rs) * mask * mask;
+
+    vec3 color = hs(uv.y * hc.x + hc.y, .2);
+    return vec4(color * shape, shape);
+}
+
+vec3 background(vec3 p) {
+    vec2 uv = p.xy;
+    vec4 c = vec4(0.);
+
+    float starSpeed = .2, starAngle = -0.8, starDensity=0.1;
+    vec2 starhs = vec2(0.1, 0.05);
+    vec4 star1 = starry(uv, 1.0 * starSpeed, 5., starAngle, starDensity, starhs);
+    vec4 star2 = starry(uv, 0.4 * starSpeed, 8., starAngle, starDensity, starhs);
+    vec4 star3 = starry(uv, 0.25 * starSpeed, 16., starAngle, starDensity, starhs);
+    vec4 stars = star1 + star2 + star3;
+    c += stars;
+
+    float trailSpeed = .8, trailAngle = -0.5, trailDensity=0.1;
+    vec2 trailhs = vec2(0.1, 0.05);
+    vec4 tr = trail(uv, trailSpeed, 36., trailAngle, trailDensity, trailhs);
+    c += tr * 1.1;
+
+    vec3 bg = vec3(255, 196, 231) / 255.;
+    vec3 col = mix(bg, c.rgb, step(.9, c.a));
+    return clamp(col, 0., 1.);
+}
+
+
+vec3 cameraRay(float angle, vec3 dir, vec3 up) {
+    vec2 p = (gl_FragCoord.xy * 2. - resolution.xy) / min(resolution.x, resolution.y);
+    vec3 side = cross(dir, up);
+    float fov = angle * 0.5 * PI / 180.0;
+	return normalize(side * sin(fov) * p.x + up * sin(fov)*p.y + dir * cos(fov));
+}
+
+void main( void ) {
+	vec3 ray = cameraRay(40., vec3(0., 0., -1.), vec3(0., 1., 0.));
+    vec3 cPos = vec3(0.,0.,7.);
+    float near = 0.1;
+
+    vec3 light = normalize(lightDir);
+
+    vec3 mainColor = vec3(230, 160, 140)/255. * 1.2;
+    vec3 specColor = vec3(1,.7,.7);
+
+    vec3 col = background(ray);
+    float depth = near;
+    vec3 p;
+    float d;
+    for(int i=0; i<100; i++) {
+        p = cPos + ray * depth;
+        d = sdf(p);
+        if(d < 0.001) break;
+        depth += d * 0.99;
+    }
+    if(d<0.001) {
+        vec3 n = normal(p, 0.01);
+        float diff = clamp(dot(lightDir, n) * 0.5 + 0.5, 0., 1.);
+        vec3 halfLE = normalize(lightDir - ray);
+        float spec = pow(clamp(dot(halfLE, n), 0., 1.), 50.);
+
+        vec2 uv = clamp(mod(p.xz, 2.0), 0., 1.);
+        col = vec3(mainColor * diff) + vec3(specColor * spec);
+    }
+    gl_FragColor = vec4(col, 1.);
+}
+</script>
+
+            <!-- vertex shader -->
+            <script id="vs" type="x-shader/x-vertex">
+                attribute vec3 position; void main(void){ gl_Position = vec4(position, 1.0); }
+            </script>
+
+            <script src="./glsl.js" type="text/javascript"></script>
+            <style type="text/css">
+                * {
+                    margin: 0;
+                    padding: 0;
+                    overflow: hidden;
+                }
+                
+                html,
+                body {
+                    height: 100%;
+                    margin: 0;
+                }
+            </style>
+            <title>棚牡丹モナカ2周年記念</title>
+</head>
+
+<body>
+    <canvas id="canvas" width="512" height="512"></canvas>
+</body>
+
+</html>
