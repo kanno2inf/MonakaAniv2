@@ -1,4 +1,4 @@
-// This code is referenced from https://wgld.org/d/glsl/g001.html
+// 参考元：https://wgld.org/d/glsl/g001.html
 // global
 var c, cw, ch, mx, my, gl, run, eCheck;
 var startTime;
