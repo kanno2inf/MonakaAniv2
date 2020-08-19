@@ -12,6 +12,12 @@ window.onload = function() {
     // canvas エレメントを取得
     c = document.getElementById('canvas');
 
+    // ピクセルサイズ
+    s = document.getElementById('scale');
+    s.addEventListener('change', changeScale, true);
+    scale = 2;
+
+
     // イベントリスナー登録
     c.addEventListener('mousemove', mouseMove, true);
 
@@ -52,6 +58,10 @@ window.onload = function() {
     render();
 };
 
+function changeScale(e) {
+    scale = e.target.value;
+}
+
 // mouse
 function mouseMove(e) {
     mx = e.offsetX / cw;
@@ -62,10 +72,9 @@ function mouseMove(e) {
 function render() {
     // フラグチェック
     if (!run) { return; }
-
     // ビューポートを動的に指定する
-    c.width = w = window.innerWidth;
-    c.height = h = window.innerHeight;
+    c.width = w = window.innerWidth / scale;
+    c.height = h = window.innerHeight / scale;
     gl.viewport(0, 0, w, h);
 
     // 時間管理
